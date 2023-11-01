@@ -1,0 +1,41 @@
+#!/bin/bash
+## kola:
+##   exclusive: false
+##   description: Verify the partition scheme is correct.
+
+set -xeuo pipefail
+
+# shellcheck disable=SC1091
+. "$KOLA_EXT_DATA/commonlib.sh"
+
+# check for 4 partitions
+totalPartitions=$(grep -c 'vda[0-9]' /proc/partitions)
+if [[ $totalPartitions -ne 4 ]]; then
+    fatal "Expected 4 partitions, got $totalPartitions"
+fi
+
+# get partition sizes 
+partitionData=$(sudo lsblk --json -ba -o NAME,FSTYPE,SIZE,MOUNTPOINT,PARTLABEL,PARTTYPENAME )
+biosBootSize=$( echo "$partitionData" | jq ' .blockdevices[].children[] | select ( .partlabel == "BIOS-BOOT" or .parttypename == "BIOS boot") | .size ' )
+efiSystemSize=$( echo "$partitionData" | jq ' .blockdevices[].children[] | select ( .partlabel == "EFI-SYSTEM" or .parttypename == "EFI System") | .size ' )
+bootSize=$( echo "$partitionData" | jq ' .blockdevices[].children[] | select ( .partlabel == "boot" or .mountpoint == "/boot") | .size ' )
+rootSize=$( echo "$partitionData" | jq ' .blockdevices[].children[] | select ( .partlabel == "root" or .mountpoint == "/sysroot") | .size ' )
+
+# check sizes of each parition
+if [[ $biosBootSize -ne 1048576 ]]; then
+    fatal "Expected BIOS-BOOT partition of size 1048576, got $biosBootSize"
+fi
+
+if [[ $efiSystemSize -ne 133169152 ]]; then
+    fatal "Expected EFI-SYSTEM partition of size 133169152, got $biosBootSize"
+fi
+
+if [[ $bootSize -ne 402653184 ]]; then
+    fatal "Expected boot partition of size 402653184, got $biosBootSize"
+fi
+
+if [[ $rootSize -ne 10199481856 ]]; then
+    fatal "Expected root partition of size 10199481856, got $biosBootSize"
+fi
+
+ok partition scheme
